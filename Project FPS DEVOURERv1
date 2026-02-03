@@ -1,0 +1,297 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+
+-- File System Config
+local folderName = "ProjectDevourer"
+local fileName = "settings.json"
+
+if not isfolder(folderName) then makefolder(folderName) end
+
+-- Global State
+local currentBind = nil
+local espActive = false
+local stealActive = false
+local cleaning = false
+local stealConnections = {}
+
+local function saveSettings(panel)
+    local data = {
+        keybind = currentBind and currentBind.Name or "NONE",
+        espActive = espActive,
+        kickActive = stealActive,
+        posX = panel.Position.X.Scale,
+        offsetX = panel.Position.X.Offset,
+        posY = panel.Position.Y.Scale,
+        offsetY = panel.Position.Y.Offset
+    }
+    writefile(folderName.."/"..fileName, HttpService:JSONEncode(data))
+end
+
+local function loadSettings()
+    local path = folderName.."/"..fileName
+    if isfile(path) then
+        local success, decoded = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+        if success then return decoded end
+    end
+    return nil
+end
+
+-- Cleanup
+if PlayerGui:FindFirstChild("DevourerUI") then
+	PlayerGui.DevourerUI:Destroy()
+end
+
+-- ScreenGui
+local gui = Instance.new("ScreenGui")
+gui.Name = "DevourerUI"
+gui.ResetOnSpawn = false
+gui.Parent = PlayerGui
+
+-- Panel
+local panel = Instance.new("Frame")
+panel.Parent = gui
+panel.Size = UDim2.fromOffset(170, 65) 
+panel.Position = UDim2.fromScale(0.5, 0.4)
+panel.AnchorPoint = Vector2.new(0.5, 0)
+panel.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+panel.BorderSizePixel = 0
+panel.Active = true
+panel.Draggable = true
+panel.ClipsDescendants = true
+
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+local stroke = Instance.new("UIStroke", panel)
+stroke.Thickness = 2
+stroke.Color = Color3.fromRGB(255, 255, 255)
+
+-- Position Auto-Save
+panel:GetPropertyChangedSignal("Position"):Connect(function()
+    saveSettings(panel)
+end)
+
+-- Labels
+local title = Instance.new("TextLabel", panel)
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(10, 6)
+title.Size = UDim2.new(1, -20, 0, 14)
+title.Text = "Project DEVOURER"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 11
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local sub = Instance.new("TextLabel", panel)
+sub.BackgroundTransparency = 1
+sub.Position = UDim2.fromOffset(10, 20)
+sub.Size = UDim2.new(1, -20, 0, 10)
+sub.Text = "discord.gg/TrbCkzP2J"
+sub.Font = Enum.Font.Gotham
+sub.TextSize = 7.5
+sub.TextColor3 = Color3.fromRGB(180, 180, 180)
+sub.TextXAlignment = Enum.TextXAlignment.Left
+
+------------------------------------------------
+--  UI 
+------------------------------------------------
+
+local activateBtn = Instance.new("TextButton", panel)
+activateBtn.Size = UDim2.fromOffset(115, 22)
+activateBtn.Position = UDim2.fromOffset(10, 35)
+activateBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+activateBtn.Text = "ACTIVATE"
+activateBtn.Font = Enum.Font.GothamBold
+activateBtn.TextSize = 10
+activateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+Instance.new("UICorner", activateBtn).CornerRadius = UDim.new(0, 5)
+
+local toggleBtn = Instance.new("TextButton", panel)
+toggleBtn.Size = UDim2.fromOffset(25, 22)
+toggleBtn.Position = UDim2.fromOffset(132, 35)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+toggleBtn.Text = "▼"
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 10
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 5)
+
+local bindBtn = Instance.new("TextButton", panel)
+bindBtn.Size = UDim2.fromOffset(147, 22)
+bindBtn.Position = UDim2.fromOffset(10, 70)
+bindBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+bindBtn.Text = "BIND: NONE"
+bindBtn.Font = Enum.Font.GothamBold
+bindBtn.TextSize = 9
+bindBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+Instance.new("UICorner", bindBtn).CornerRadius = UDim.new(0, 5)
+
+local espBtn = Instance.new("TextButton", panel)
+espBtn.Size = UDim2.fromOffset(147, 22)
+espBtn.Position = UDim2.fromOffset(10, 97)
+espBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+espBtn.Text = "player esp:off"
+espBtn.Font = Enum.Font.GothamBold
+espBtn.TextSize = 9
+espBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 5)
+
+local stealBtn = Instance.new("TextButton", panel)
+stealBtn.Size = UDim2.fromOffset(147, 22)
+stealBtn.Position = UDim2.fromOffset(10, 124)
+stealBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+stealBtn.Text = "steal kick:off"
+stealBtn.Font = Enum.Font.GothamBold
+stealBtn.TextSize = 9
+stealBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+Instance.new("UICorner", stealBtn).CornerRadius = UDim.new(0, 5)
+
+------------------------------------------------
+-- ACTIVATE LAGGER
+------------------------------------------------
+
+local function runLagger()
+	if activateBtn.Text == "lagging server😈" then return end
+	
+    -- Restored Tool logic
+    local cloner = (function()
+		local char = player.Character
+		if char then for _, t in ipairs(char:GetChildren()) do if t:IsA("Tool") and t.Name:lower():find("quantum") then return t end end end
+		local bp = player:FindFirstChild("Backpack")
+		if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") and t.Name:lower():find("quantum") then return t end end end
+	end)()
+
+	if cloner then
+		player.Character.Humanoid:EquipTool(cloner)
+		task.wait(0.05)
+		for _, tool in ipairs(player.Backpack:GetChildren()) do if tool:IsA("Tool") then tool.Parent = player.Character end end
+		task.wait(0.05)
+		pcall(function() cloner:Activate() end)
+	end
+
+	activateBtn.Text = "lagging server😈"
+	activateBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
+	task.delay(2, function() activateBtn.Text = "ACTIVATE" activateBtn.TextColor3 = Color3.fromRGB(255, 255, 255) end)
+
+	if not cleaning then
+		cleaning = true
+		RunService.Heartbeat:Connect(function()
+			for _, obj in ipairs(workspace:GetDescendants()) do
+				if obj:IsA("Humanoid") then
+					local char = obj.Parent
+					if char then for _, item in ipairs(char:GetChildren()) do
+						if item:IsA("Accessory") or item:IsA("Clothing") or item:IsA("ShirtGraphic") then 
+                            item:Destroy() 
+                        end
+					end end
+				end
+			end
+		end)
+	end
+end
+
+------------------------------------------------
+--  ESP and STEAL KICK 
+------------------------------------------------
+
+local function createEsp(plr)
+    if not plr.Character or plr.Character:FindFirstChild("ESPHighlight") then return end
+    local h = Instance.new("Highlight", plr.Character)
+    h.Name = "ESPHighlight"
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    local n = Instance.new("BillboardGui", plr.Character)
+    n.Name = "ESPName"
+    n.Adornee = plr.Character:FindFirstChild("Head")
+    n.Size = UDim2.new(0, 100, 0, 30)
+    n.StudsOffset = Vector3.new(0, 2.5, 0)
+    n.AlwaysOnTop = true
+    local l = Instance.new("TextLabel", n)
+    l.Size = UDim2.new(1, 0, 1, 0)
+    l.BackgroundTransparency = 1
+    l.Text = plr.Name
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 12
+    task.spawn(function()
+        while h and h.Parent do
+            local color = Color3.fromHSV((tick() * 0.3) % 1, 0.8, 1)
+            h.FillColor, h.OutlineColor, l.TextColor3 = color, color, color
+            RunService.RenderStepped:Wait()
+        end
+    end)
+end
+
+RunService.RenderStepped:Connect(function()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player then
+            if espActive then createEsp(plr)
+            elseif plr.Character then
+                local h, n = plr.Character:FindFirstChild("ESPHighlight"), plr.Character:FindFirstChild("ESPName")
+                if h then h:Destroy() end if n then n:Destroy() end
+            end
+        end
+    end
+end)
+
+local function watchObject(obj)
+	if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then return end
+	local function check() if string.find(string.lower(obj.Text), "you stole") then player:Kick("You stole a pet") end end
+	table.insert(stealConnections, obj:GetPropertyChangedSignal("Text"):Connect(check))
+end
+
+local function toggleStealKick(force)
+    stealActive = (force ~= nil) and force or not stealActive
+	stealBtn.Text = stealActive and "steal kick:on" or "steal kick:off"
+	stealBtn.TextColor3 = stealActive and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(200, 200, 200)
+    if stealActive then
+		for _, g in ipairs(PlayerGui:GetChildren()) do 
+            for _, o in ipairs(g:GetDescendants()) do watchObject(o) end
+            table.insert(stealConnections, g.DescendantAdded:Connect(watchObject))
+        end
+	else
+		for _, c in ipairs(stealConnections) do c:Disconnect() end stealConnections = {}
+	end
+    saveSettings(panel)
+end
+
+------------------------------------------------
+-- ⌨️ BINDING & TOGGLES
+------------------------------------------------
+
+local listening = false
+bindBtn.MouseButton1Click:Connect(function() listening = true bindBtn.Text = "..." end)
+
+espBtn.MouseButton1Click:Connect(function()
+    espActive = not espActive
+    espBtn.Text = espActive and "player esp:on" or "player esp:off"
+    espBtn.TextColor3 = espActive and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(200, 200, 200)
+    saveSettings(panel)
+end)
+
+stealBtn.MouseButton1Click:Connect(function() toggleStealKick() end)
+activateBtn.MouseButton1Click:Connect(runLagger)
+
+UserInputService.InputBegan:Connect(function(input, p)
+	if p then return end
+	if listening then
+		currentBind = input.KeyCode
+		bindBtn.Text = "BIND: "..input.KeyCode.Name
+		listening = false saveSettings(panel)
+	elseif currentBind and input.KeyCode == currentBind then runLagger() end
+end)
+
+toggleBtn.MouseButton1Click:Connect(function()
+	local expanded = (panel.Size.Y.Offset > 70)
+	panel:TweenSize(UDim2.fromOffset(170, expanded and 65 or 155), "Out", "Back", 0.3, true)
+	toggleBtn.Text = expanded and "▼" or "▲"
+end)
+
+-- LOAD DATA
+local saved = loadSettings()
+if saved then
+    if saved.posX then panel.Position = UDim2.new(saved.posX, saved.offsetX, saved.posY, saved.offsetY) end
+    if saved.keybind ~= "NONE" then currentBind = Enum.KeyCode[saved.keybind] bindBtn.Text = "BIND: "..saved.keybind end
+    if saved.espActive then espActive = true espBtn.Text = "player esp:on" espBtn.TextColor3 = Color3.fromRGB(0, 255, 120) end
+    if saved.kickActive then toggleStealKick(true) end
+end
